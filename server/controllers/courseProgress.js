@@ -6,16 +6,26 @@ const Course = require("../models/Course")
 
 exports.updateCourseProgress = async (req, res) => {
   const { courseId, subsectionId } = req.body
+
+  if (!courseId || !subsectionId) {
+    return res.status(400).json({
+      success: false,
+      message: "Course ID and Subsection ID are required",
+    });
+  }
+
   const userId = req.user.id
 
   try {
     // Check if the subsection is valid
     const subsection = await SubSection.findById(subsectionId)
     if (!subsection) {
-      return res.status(404).json({ error: "Invalid subsection" })
+      return res.status(404).json({
+        success: false,
+        message: "Subsection not found",
+      })      
     }
 
-    // Find the course progress document for the user and course
     let courseProgress = await CourseProgress.findOne({
       courseID: courseId,
       userId: userId,
@@ -30,20 +40,26 @@ exports.updateCourseProgress = async (req, res) => {
     } else {
       // If course progress exists, check if the subsection is already completed
       if (courseProgress.completedVideos.includes(subsectionId)) {
-        return res.status(400).json({ error: "Subsection already completed" })
+        return res.status(409).json({
+          success: false,
+          message: "This subsection is already marked as completed.",
+        })        
       }
-
-      // Push the subsection into the completedVideos array
       courseProgress.completedVideos.push(subsectionId)
+      await courseProgress.save()
     }
 
-    // Save the updated course progress
-    await courseProgress.save()
-
-    return res.status(200).json({ message: "Course progress updated" })
+    return res.status(200).json({
+      success: true,
+      message: "Course progress updated",
+      data: courseProgress,
+    });
   } catch (error) {
-    console.error(error)
-    return res.status(500).json({ error: "Internal server error" })
+    console.error("Update Progress Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 }
 

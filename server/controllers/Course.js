@@ -6,13 +6,14 @@ const User = require("../models/User")
 const { uploadImageToCloudinary } = require("../utils/imageUploader")
 const CourseProgress = require("../models/CourseProgress")
 const { convertSecondsToDuration } = require("../utils/secToDuration")
+
+//findById(id)
+//findOne({ _id: id })
 // Function to create a new course
 exports.createCourse = async (req, res) => {
   try {
-    // Get user ID from request object
     const userId = req.user.id
 
-    // Get all required fields from request body
     let {
       courseName,
       courseDescription,
@@ -23,7 +24,7 @@ exports.createCourse = async (req, res) => {
       status,
       instructions: _instructions,
     } = req.body
-    // Get thumbnail image from request files
+    
     const thumbnail = req.files.thumbnailImage
 
     // Convert the tag and instructions from stringified Array to Array
@@ -33,7 +34,6 @@ exports.createCourse = async (req, res) => {
     console.log("tag", tag)
     console.log("instructions", instructions)
 
-    // Check if any of the required fields are missing
     if (
       !courseName ||
       !courseDescription ||
@@ -53,9 +53,10 @@ exports.createCourse = async (req, res) => {
       status = "Draft"
     }
     // Check if the user is an instructor
-    const instructorDetails = await User.findById(userId, {
+    const instructorDetails = await User.findOne({
+      _id: userId,
       accountType: "Instructor",
-    })
+    });
 
     if (!instructorDetails) {
       return res.status(404).json({
@@ -64,7 +65,6 @@ exports.createCourse = async (req, res) => {
       })
     }
 
-    // Check if the tag given is valid
     const categoryDetails = await Category.findById(category)
     if (!categoryDetails) {
       return res.status(404).json({
@@ -77,6 +77,13 @@ exports.createCourse = async (req, res) => {
       thumbnail,
       process.env.FOLDER_NAME
     )
+
+    if(!thumbnailImage){
+      return res.status(500).json({
+        success:false,
+        message:"Image Upload Failed"
+      })
+    }
     console.log(thumbnailImage)
     // Create a new course with the given details
     const newCourse = await Course.create({
@@ -94,9 +101,7 @@ exports.createCourse = async (req, res) => {
 
     // Add the new course to the User Schema of the Instructor
     await User.findByIdAndUpdate(
-      {
-        _id: instructorDetails._id,
-      },
+        instructorDetails._id,
       {
         $push: {
           courses: newCourse._id,
@@ -106,7 +111,7 @@ exports.createCourse = async (req, res) => {
     )
     // Add the new course to the Categories
     const categoryDetails2 = await Category.findByIdAndUpdate(
-      { _id: category },
+      category,
       {
         $push: {
           courses: newCourse._id,
@@ -131,6 +136,7 @@ exports.createCourse = async (req, res) => {
     })
   }
 }
+
 // Edit Course Details
 exports.editCourse = async (req, res) => {
   try {
@@ -143,17 +149,23 @@ exports.editCourse = async (req, res) => {
     }
 
     // If Thumbnail Image is found, update it
-    if (req.files) {
-      console.log("thumbnail update")
-      const thumbnail = req.files.thumbnailImage
-      const thumbnailImage = await uploadImageToCloudinary(
-        thumbnail,
-        process.env.FOLDER_NAME
-      )
-      course.thumbnail = thumbnailImage.secure_url
+    if (req.files?.thumbnailImage) {
+      const thumbnail = req.files.thumbnailImage;
+      const thumbnailImage = await uploadImageToCloudinary(thumbnail, process.env.FOLDER_NAME);
+      if (!thumbnailImage?.secure_url) {
+        return res.status(500).json({ success: false, message: "Image upload failed" });
+      }
+      course.thumbnail = thumbnailImage.secure_url;
     }
 
     // Update only the fields that are present in the request body
+    // {
+    //   "title": "JavaScript for Beginners",
+    //   "price": 499,
+    //   "tag": "[\"js\", \"beginners\"]",
+    //   "instructions": "[\"Watch videos\", \"Take quizzes\"]"
+    // }
+    
     for (const key in updates) {
       if (updates.hasOwnProperty(key)) {
         if (key === "tag" || key === "instructions") {
@@ -185,7 +197,7 @@ exports.editCourse = async (req, res) => {
       })
       .exec()
 
-    res.json({
+    res.status(200).json({
       success: true,
       message: "Course updated successfully",
       data: updatedCourse,
@@ -204,7 +216,7 @@ exports.getAllCourses = async (req, res) => {
   try {
     const allCourses = await Course.find(
       { status: "Published" },
-      {
+      {//Projection : only these fields of a particular course to be fetched 
         courseName: true,
         price: true,
         thumbnail: true,
@@ -319,8 +331,8 @@ exports.getCourseDetails = async (req, res) => {
     // }
 
     let totalDurationInSeconds = 0
-    courseDetails.courseContent.forEach((content) => {
-      content.subSection.forEach((subSection) => {
+    courseDetails.courseContent.forEach((section) => {
+      section.subSection.forEach((subSection) => {
         const timeDurationInSeconds = parseInt(subSection.timeDuration)
         totalDurationInSeconds += timeDurationInSeconds
       })
@@ -417,15 +429,12 @@ exports.getFullCourseDetails = async (req, res) => {
 // Get a list of Course for a given Instructor
 exports.getInstructorCourses = async (req, res) => {
   try {
-    // Get the instructor ID from the authenticated user or request body
     const instructorId = req.user.id
 
-    // Find all courses belonging to the instructor
     const instructorCourses = await Course.find({
       instructor: instructorId,
     }).sort({ createdAt: -1 })
 
-    // Return the instructor's courses
     res.status(200).json({
       success: true,
       data: instructorCourses,
@@ -473,6 +482,14 @@ exports.deleteCourse = async (req, res) => {
       // Delete the section
       await Section.findByIdAndDelete(sectionId)
     }
+
+    await Category.findByIdAndUpdate(course.category, {
+      $pull: { courses: courseId }
+    });
+    
+
+    await CourseProgress.deleteMany({ courseID: courseId });
+    await RatingAndReview.deleteMany({ course: courseId });
 
     // Delete the course
     await Course.findByIdAndDelete(courseId)

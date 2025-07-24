@@ -4,21 +4,14 @@ const SubSection = require("../models/Subsection")
 // CREATE a new section
 exports.createSection = async (req, res) => {
   try {
-    // Extract the required properties from the request body
     const { sectionName, courseId } = req.body
-
-    // Validate the input
     if (!sectionName || !courseId) {
       return res.status(400).json({
         success: false,
         message: "Missing required properties",
       })
     }
-
-    // Create a new section with the given name
-    const newSection = await Section.create({ sectionName })
-
-    // Add the new section to the course's content array
+    const newSection = await Section.create({ sectionName })//create new section
     const updatedCourse = await Course.findByIdAndUpdate(
       courseId,
       {
@@ -34,21 +27,19 @@ exports.createSection = async (req, res) => {
           path: "subSection",
         },
       })
-      .exec()
-
-    // Return the updated course object in the response
-    res.status(200).json({
-      success: true,
-      message: "Section created successfully",
-      updatedCourse,
-    })
+      return res.status(200).json({
+          success: true,
+          message: `Section '${sectionName}' created and linked to course.`,
+          updatedCourse,
+        });
+        
   } catch (error) {
-    // Handle errors
+    console.error("Error while creating section:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
       error: error.message,
-    })
+    });
   }
 }
 
@@ -56,32 +47,50 @@ exports.createSection = async (req, res) => {
 exports.updateSection = async (req, res) => {
   try {
     const { sectionName, sectionId, courseId } = req.body
-    const section = await Section.findByIdAndUpdate(
+    
+    if (!sectionName || !sectionId || !courseId) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide sectionName, sectionId, and courseId",
+        });
+      }
+      
+    const updatedSection = await Section.findByIdAndUpdate(
       sectionId,
       { sectionName },
       { new: true }
     )
-    const course = await Course.findById(courseId)
+    
+    if (!updatedSection) {
+      return res.status(404).json({
+        success: false,
+        message: "Section not found",
+      });
+    }
+
+    const updatedCourse = await Course.findById(courseId)
       .populate({
         path: "courseContent",
         populate: {
           path: "subSection",
         },
       })
-      .exec()
-    console.log(course)
+
+    console.log(updatedCourse)
+
     res.status(200).json({
       success: true,
-      message: section,
-      data: course,
-    })
+      message: "Section updated successfully",
+      section: updatedSection,
+      course: updatedCourse,
+    });
   } catch (error) {
-    console.error("Error updating section:", error)
+    console.error("Error updating section:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Error updating section",
       error: error.message,
-    })
+    });
   }
 }
 
@@ -89,6 +98,14 @@ exports.updateSection = async (req, res) => {
 exports.deleteSection = async (req, res) => {
   try {
     const { sectionId, courseId } = req.body
+
+    if (!sectionId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: "Section ID and Course ID are required",
+      });
+    }
+
     await Course.findByIdAndUpdate(courseId, {
       $pull: {
         courseContent: sectionId,
@@ -103,6 +120,7 @@ exports.deleteSection = async (req, res) => {
       })
     }
     // Delete the associated subsections
+    //_id -> refer to the subSectionID 
     await SubSection.deleteMany({ _id: { $in: section.subSection } })
 
     await Section.findByIdAndDelete(sectionId)
@@ -115,11 +133,10 @@ exports.deleteSection = async (req, res) => {
           path: "subSection",
         },
       })
-      .exec()
 
     res.status(200).json({
       success: true,
-      message: "Section deleted",
+      message: "Section and its subsections deleted successfully",
       data: course,
     })
   } catch (error) {

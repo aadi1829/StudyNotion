@@ -19,7 +19,6 @@ exports.updateProfile = async (req, res) => {
     } = req.body
     const id = req.user.id
 
-    // Find the profile by id
     const userDetails = await User.findById(id)
     const profile = await Profile.findById(userDetails.additionalDetails)
 
@@ -27,15 +26,12 @@ exports.updateProfile = async (req, res) => {
       firstName,
       lastName,
     })
-    await user.save()
 
     // Update the profile fields
     profile.dateOfBirth = dateOfBirth
     profile.about = about
     profile.contactNumber = contactNumber
     profile.gender = gender
-
-    // Save the updated profile
     await profile.save()
 
     // Find the updated user details
@@ -56,22 +52,26 @@ exports.updateProfile = async (req, res) => {
     })
   }
 }
-
+// Deletes a logged-in user's User account
+// Deletes their Profile
+// Removes their enrollment from all Course documents
+// Deletes their Course Progress documents
 exports.deleteAccount = async (req, res) => {
   try {
     const id = req.user.id
     console.log(id)
-    const user = await User.findById({ _id: id })
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found",
       })
     }
-    // Delete Assosiated Profile with the User
-    await Profile.findByIdAndDelete({
-      _id: new mongoose.Types.ObjectId(user.additionalDetails),
-    })
+    // await Profile.findByIdAndDelete({
+    //   _id: new mongoose.Types.ObjectId(user.additionalDetails),
+    // })
+    await Profile.findByIdAndDelete(user.additionalDetails);
+
     for (const courseId of user.courses) {
       await Course.findByIdAndUpdate(
         courseId,
@@ -79,18 +79,22 @@ exports.deleteAccount = async (req, res) => {
         { new: true }
       )
     }
-    // Now Delete User
-    await User.findByIdAndDelete({ _id: id })
+    
+    await CourseProgress.deleteMany({ id });
+    await User.findByIdAndDelete(id);
+
     res.status(200).json({
       success: true,
-      message: "User deleted successfully",
+      message: "User and associated data deleted successfully.",
     })
-    await CourseProgress.deleteMany({ userId: id })
+
   } catch (error) {
-    console.log(error)
-    res
-      .status(500)
-      .json({ success: false, message: "User Cannot be deleted successfully" })
+    console.error("Error deleting account:", error);
+    return res.status(500).json({
+      success: false,
+      message: "User account deletion failed.",
+      error: error.message,
+    });
   }
 }
 

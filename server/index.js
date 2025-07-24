@@ -1,30 +1,33 @@
 // Importing necessary modules and packages
 const express = require("express");
 const app = express();
+
+//routes
 const userRoutes = require("./routes/user");
 const profileRoutes = require("./routes/profile");
 const courseRoutes = require("./routes/Course");
 const paymentRoutes = require("./routes/Payments");
 const contactUsRoute = require("./routes/Contact");
+
+//config functions
 const database = require("./config/database");
+const { cloudinaryConnect } = require("./config/cloudinary");
+
+
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
-const { cloudinaryConnect } = require("./config/cloudinary");
 const fileUpload = require("express-fileupload");
+
 const dotenv = require("dotenv");
-
-// Setting up port number
-const PORT = process.env.PORT || 4000;
-
-// Loading environment variables from .env file
 dotenv.config();
 
-// Connecting to database
+const PORT = process.env.PORT || 4000;
+
 database.connect();
  
 // Middlewares
-app.use(express.json());
-app.use(cookieParser());
+app.use(express.json()); //for parsing re.body
+app.use(cookieParser()); //for parsing cookies
 app.use(
 	cors({
 		origin: "*",

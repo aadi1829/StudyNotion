@@ -7,7 +7,7 @@ exports.resetPasswordToken = async (req, res) => {
     const email = req.body.email
     const user = await User.findOne({ email: email })
     if (!user) {
-      return res.json({
+      return res.status(404).json({
         success: false,
         message: `This Email: ${email} is not Registered With Us Enter a Valid Email `,
       })
@@ -33,10 +33,9 @@ exports.resetPasswordToken = async (req, res) => {
       `Your Link for email verification is ${url}. Please click this url to reset your password.`
     )
 
-    res.json({
+    res.status(200).json({
       success: true,
-      message:
-        "Email Sent Successfully, Please Check Your Email to Continue Further",
+      message:"Email Sent Successfully, Please Check Your Email to Continue Further",
     })
   } catch (error) {
     return res.json({
@@ -52,14 +51,14 @@ exports.resetPassword = async (req, res) => {
     const { password, confirmPassword, token } = req.body
 
     if (confirmPassword !== password) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         message: "Password and Confirm Password Does not Match",
       })
     }
     const userDetails = await User.findOne({ token: token })
     if (!userDetails) {
-      return res.json({
+      return res.status(401).json({
         success: false,
         message: "Token is Invalid",
       })
@@ -72,11 +71,15 @@ exports.resetPassword = async (req, res) => {
     }
     const encryptedPassword = await bcrypt.hash(password, 10)
     await User.findOneAndUpdate(
-      { token: token },
-      { password: encryptedPassword },
+      { token },
+      { 
+        password: encryptedPassword,
+        token: undefined,
+        resetPasswordExpires: undefined
+      },
       { new: true }
-    )
-    res.json({
+    )    
+    res.status(200).json({
       success: true,
       message: `Password Reset Successful`,
     })

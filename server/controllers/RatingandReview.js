@@ -8,7 +8,12 @@ exports.createRating = async (req, res) => {
     const userId = req.user.id
     const { rating, review, courseId } = req.body
 
-    // Check if the user is enrolled in the course
+    if (!rating || !review || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating, review, and courseId are required",
+      });
+    }
 
     const courseDetails = await Course.findOne({
       _id: courseId,
@@ -18,11 +23,10 @@ exports.createRating = async (req, res) => {
     if (!courseDetails) {
       return res.status(404).json({
         success: false,
-        message: "Student is not enrolled in this course",
+        message: "You must be enrolled in the course to leave a review",
       })
     }
 
-    // Check if the user has already reviewed the course
     const alreadyReviewed = await RatingAndReview.findOne({
       user: userId,
       course: courseId,
@@ -31,11 +35,10 @@ exports.createRating = async (req, res) => {
     if (alreadyReviewed) {
       return res.status(403).json({
         success: false,
-        message: "Course already reviewed by user",
+        message: "You have already reviewed this course",
       })
     }
 
-    // Create a new rating and review
     const ratingReview = await RatingAndReview.create({
       rating,
       review,
@@ -46,10 +49,9 @@ exports.createRating = async (req, res) => {
     // Add the rating and review to the course
     await Course.findByIdAndUpdate(courseId, {
       $push: {
-        ratingAndReviews: ratingReview,
+        ratingAndReviews: ratingReview._id,
       },
     })
-    await courseDetails.save()
 
     return res.status(201).json({
       success: true,
@@ -69,7 +71,15 @@ exports.createRating = async (req, res) => {
 // Get the average rating for a course
 exports.getAverageRating = async (req, res) => {
   try {
-    const courseId = req.body.courseId
+    const courseId = req.body.courseId || req.params.courseId
+
+    if (!courseId) {
+        return res.status(400).json({
+          success: false,
+          message: "courseId is required",
+        });
+      }
+      
 
     // Calculate the average rating using the MongoDB aggregation pipeline
     const result = await RatingAndReview.aggregate([
@@ -80,28 +90,25 @@ exports.getAverageRating = async (req, res) => {
       },
       {
         $group: {
-          _id: null,
+          _id: null, //kisi specific field ke basis pr group nhi bnana hai, saare doc ko ek hi group mai put krdo
           averageRating: { $avg: "$rating" },
         },
       },
     ])
 
-    if (result.length > 0) {
-      return res.status(200).json({
-        success: true,
-        averageRating: result[0].averageRating,
-      })
-    }
+    const averageRating = result.length > 0 ? result[0].averageRating : 0;
 
-    // If no ratings are found, return 0 as the default rating
-    return res.status(200).json({ success: true, averageRating: 0 })
+    return res.status(200).json({
+      success: true,
+      averageRating: averageRating,
+    });
   } catch (error) {
-    console.error(error)
+    console.error("Error in getAverageRating:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to retrieve the rating for the course",
+      message: "Failed to retrieve the average rating",
       error: error.message,
-    })
+    });
   }
 }
 

@@ -10,9 +10,6 @@ const {
   instructorDashboard,
 } = require("../controllers/profile")
 
-// ********************************************************************************************************
-//                                      Profile routes
-// ********************************************************************************************************
 // Delet User Account
 router.delete("/deleteProfile", auth, deleteAccount)
 router.put("/updateProfile", auth, updateProfile)
