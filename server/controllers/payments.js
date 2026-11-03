@@ -1,5 +1,6 @@
 const { instance } = require("../config/razorpay")
 const Course = require("../models/Course")
+const Payment = require("../models/Payment")
 const crypto = require("crypto")
 const User = require("../models/User")
 const mailSender = require("../utils/mailSender")
@@ -41,7 +42,11 @@ exports.capturePayment = async (req, res) => {
         });
       }
 
-      if (course.studentsEnroled.includes(uid)) {
+      const isAlreadyEnrolled = course.studentsEnroled.some(
+        (enrolledStudentId) => enrolledStudentId.equals(uid)
+      )
+
+      if (isAlreadyEnrolled) {
         return res.status(400).json({
           success: false,
           message: `User already enrolled in: ${course.title}`,
@@ -61,7 +66,7 @@ exports.capturePayment = async (req, res) => {
   const options = {
     amount: total_amount * 100,
     currency: "INR",
-    receipt: Math.random(Date.now()).toString(),
+    receipt: `receipt_${Date.now()}`,
   }
 
   try {
@@ -83,8 +88,6 @@ exports.capturePayment = async (req, res) => {
 }
 
 // verify the payment
-const crypto = require("crypto");
-
 exports.verifyPayment = async (req, res) => {
   const {
     razorpay_order_id,
@@ -119,8 +122,35 @@ exports.verifyPayment = async (req, res) => {
       return res.status(401).json({ success: false, message: "Payment verification failed!" });
      }
 
+    // If we already have a record of this exact payment, we already
+    // enrolled the student for it earlier. Don't do it again.
+    const existingPayment = await Payment.findOne({
+      razorpayPaymentId: razorpay_payment_id,
+    })
+
+    if (existingPayment) {
+      return res.status(200).json({
+        success: true,
+        message: "Payment was already verified and the student is enrolled.",
+      });
+    }
+
      // Enroll student in courses if valid
-    await enrollStudents(courses, userId, res);
+    const enrollResult = await enrollStudents(courses, userId, res);
+    if (!enrollResult.success) {
+      // enrollStudents has already sent an error response, so stop here
+      return
+    }
+
+    // Keep a record of this payment so the same payment can never be
+    // used to enroll the student a second time
+    await Payment.create({
+      user: userId,
+      courses,
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      amount: enrollResult.totalAmount,
+    })
 
     return res.status(200).json({
       success: true,
@@ -184,40 +214,58 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
   }
 }
 
-// enroll the student in the courses
+// Enroll the student in the courses.
+// On success, returns { success: true, totalAmount }.
+// On failure, it sends the error response itself and returns { success: false } -
+// the caller should check this and stop instead of also sending a response.
 const enrollStudents = async (courses, userId, res) => {
   if (!courses || !userId) {
-    return res
+    res
       .status(400)
       .json({ success: false, message: "Please Provide Course ID and User ID" })
+    return { success: false }
   }
+
+  let totalAmount = 0
 
   for (const courseId of courses) {
     try {
-      // Find the course and enroll the student in it
+      // Add the student to the course only if they are not already in
+      // there, so calling this twice for the same course never adds
+      // them a second time
       const enrolledCourse = await Course.findOneAndUpdate(
         { _id: courseId },
-        { $push: { studentsEnroled: userId } },
+        { $addToSet: { studentsEnroled: userId } },
         { new: true }
       )
 
       if (!enrolledCourse) {
-        return res
-          .status(500)
-          .json({ success: false, error: "Course not found" })
+        res.status(500).json({ success: false, error: "Course not found" })
+        return { success: false }
       }
-      console.log("Updated course: ", enrolledCourse)
 
-      const courseProgress = await CourseProgress.create({
+      totalAmount += enrolledCourse.price
+
+      // Only create a progress record the first time around, so a
+      // repeated call does not create duplicate progress documents
+      let courseProgress = await CourseProgress.findOne({
         courseID: courseId,
         userId: userId,
-        completedVideos: [],
       })
+
+      if (!courseProgress) {
+        courseProgress = await CourseProgress.create({
+          courseID: courseId,
+          userId: userId,
+          completedVideos: [],
+        })
+      }
+
       // Find the student and add the course to their list of enrolled courses
       const enrolledStudent = await User.findByIdAndUpdate(
         userId,
         {
-          $push: {
+          $addToSet: {
             courses: courseId,
             courseProgress: courseProgress._id,
           },
@@ -225,9 +273,8 @@ const enrollStudents = async (courses, userId, res) => {
         { new: true }
       )
 
-      console.log("Enrolled student: ", enrolledStudent)
       // Send an email notification to the enrolled student
-      const emailResponse = await mailSender(
+      await mailSender(
         enrolledStudent.email,
         `Successfully Enrolled into ${enrolledCourse.courseName}`,
         courseEnrollmentEmail(
@@ -235,11 +282,12 @@ const enrollStudents = async (courses, userId, res) => {
           `${enrolledStudent.firstName} ${enrolledStudent.lastName}`
         )
       )
-
-      console.log("Email sent successfully: ", emailResponse.response)
     } catch (error) {
       console.log(error)
-      return res.status(500).json({ success: false, error: error.message })
+      res.status(500).json({ success: false, error: error.message })
+      return { success: false }
     }
   }
+
+  return { success: true, totalAmount }
 }

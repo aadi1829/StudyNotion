@@ -8,6 +8,11 @@ const { passwordUpdated } = require("../mail/templates/passwordUpdate")
 const Profile = require("../models/Profile")
 require("dotenv").config()
 
+// How long a login session lasts. The JWT and its cookie should always
+// use the same value, so a cookie never outlives (or expires before) the
+// token it is holding.
+const TOKEN_EXPIRY_HOURS = 24
+
 // Signup Controller for Registering USers
 
 exports.signup = async (req, res) => {
@@ -61,7 +66,6 @@ exports.signup = async (req, res) => {
       firstName,
       lastName,
       email,
-      contactNumber,
       password: hashedPassword,
       accountType: accountType,
       approved: approved,
@@ -109,16 +113,16 @@ exports.login = async (req, res) => {
         { email: user.email, id: user._id, accountType: user.accountType },
         process.env.JWT_SECRET,
         {
-          expiresIn: "24h",
+          expiresIn: `${TOKEN_EXPIRY_HOURS}h`,
         }
       )
 
       user.token = token
       user.password = undefined
-      
+
       // Set cookie for token and return success response
       const options = {
-        expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        expires: new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000),
         httpOnly: true,
       }
       res.cookie("token", token, options).status(200).json({
@@ -162,9 +166,6 @@ exports.sendotp = async (req, res) => {
     })
 
     let result = await OTP.findOne({ otp: otp })
-    // console.log("Result is Generate OTP Func")
-    // console.log("OTP", otp)
-    // console.log("Result", result)
     while (result) {
       otp = otpGenerator.generate(6, {
         upperCaseAlphabets: false,
@@ -174,12 +175,10 @@ exports.sendotp = async (req, res) => {
       result = await OTP.findOne({ otp: otp }); // Update result with new OTP
     }
     const otpPayload = { email, otp }
-    const otpBody = await OTP.create(otpPayload)
-    console.log("OTP Body", otpBody)
+    await OTP.create(otpPayload)
     res.status(200).json({
       success: true,
       message: `OTP Sent Successfully`,
-      otp,
     })
   } catch (error) {
     console.log(error.message)
@@ -208,8 +207,21 @@ exports.changePassword = async (req, res) => {
     const encryptedPassword = await bcrypt.hash(newPassword, 10)
     const updatedUserDetails = await User.findByIdAndUpdate(
       req.user.id,
-      { password: encryptedPassword },
+      { password: encryptedPassword, passwordChangedAt: Date.now() },
       { new: true }
+    )
+
+    // Every token issued before this point is now invalid (see the auth
+    // middleware's passwordChangedAt check), so give this session a fresh
+    // token instead of logging the user out of the device they are on.
+    const newToken = jwt.sign(
+      {
+        email: updatedUserDetails.email,
+        id: updatedUserDetails._id,
+        accountType: updatedUserDetails.accountType,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: `${TOKEN_EXPIRY_HOURS}h` }
     )
 
     // Send notification email
@@ -234,7 +246,7 @@ exports.changePassword = async (req, res) => {
     }
 
     return res.status(200).json(
-      { success: true, message: "Password updated successfully" }
+      { success: true, message: "Password updated successfully", token: newToken }
     )
   } catch (error) {
     console.error("Error occurred while updating password:", error)

@@ -2,6 +2,7 @@ const Course = require("../models/Course")
 const Category = require("../models/Category")
 const Section = require("../models/Section")
 const SubSection = require("../models/Subsection")
+const RatingAndReview = require("../models/RatingandReview")
 const User = require("../models/User")
 const { uploadImageToCloudinary } = require("../utils/imageUploader")
 const CourseProgress = require("../models/CourseProgress")
@@ -141,11 +142,18 @@ exports.createCourse = async (req, res) => {
 exports.editCourse = async (req, res) => {
   try {
     const { courseId } = req.body
-    const updates = req.body
     const course = await Course.findById(courseId)
 
     if (!course) {
       return res.status(404).json({ error: "Course not found" })
+    }
+
+    // Only the instructor who owns this course is allowed to edit it
+    if (course.instructor.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to edit this course",
+      })
     }
 
     // If Thumbnail Image is found, update it
@@ -158,21 +166,31 @@ exports.editCourse = async (req, res) => {
       course.thumbnail = thumbnailImage.secure_url;
     }
 
-    // Update only the fields that are present in the request body
-    // {
-    //   "title": "JavaScript for Beginners",
-    //   "price": 499,
-    //   "tag": "[\"js\", \"beginners\"]",
-    //   "instructions": "[\"Watch videos\", \"Take quizzes\"]"
-    // }
-    
-    for (const key in updates) {
-      if (updates.hasOwnProperty(key)) {
-        if (key === "tag" || key === "instructions") {
-          course[key] = JSON.parse(updates[key])
-        } else {
-          course[key] = updates[key]
-        }
+    // Only let these fields be changed through this route.
+    // This stops someone from sneaking in other fields (like "instructor")
+    // through the request body.
+    const allowedFields = [
+      "courseName",
+      "courseDescription",
+      "whatYouWillLearn",
+      "price",
+      "tag",
+      "category",
+      "status",
+      "instructions",
+    ]
+
+    for (const field of allowedFields) {
+      const value = req.body[field]
+
+      if (value === undefined) {
+        continue
+      }
+
+      if (field === "tag" || field === "instructions") {
+        course[field] = JSON.parse(value)
+      } else {
+        course[field] = value
       }
     }
 
@@ -452,11 +470,20 @@ exports.getInstructorCourses = async (req, res) => {
 exports.deleteCourse = async (req, res) => {
   try {
     const { courseId } = req.body
+    const userId = req.user.id
 
     // Find the course
     const course = await Course.findById(courseId)
     if (!course) {
       return res.status(404).json({ message: "Course not found" })
+    }
+
+    // Only the instructor who owns this course is allowed to delete it
+    if (course.instructor.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to delete this course",
+      })
     }
 
     // Unenroll students from the course

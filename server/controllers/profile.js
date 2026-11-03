@@ -59,7 +59,6 @@ exports.updateProfile = async (req, res) => {
 exports.deleteAccount = async (req, res) => {
   try {
     const id = req.user.id
-    console.log(id)
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
@@ -67,9 +66,6 @@ exports.deleteAccount = async (req, res) => {
         message: "User not found",
       })
     }
-    // await Profile.findByIdAndDelete({
-    //   _id: new mongoose.Types.ObjectId(user.additionalDetails),
-    // })
     await Profile.findByIdAndDelete(user.additionalDetails);
 
     for (const courseId of user.courses) {
@@ -79,8 +75,8 @@ exports.deleteAccount = async (req, res) => {
         { new: true }
       )
     }
-    
-    await CourseProgress.deleteMany({ id });
+
+    await CourseProgress.deleteMany({ userId: id });
     await User.findByIdAndDelete(id);
 
     res.status(200).json({

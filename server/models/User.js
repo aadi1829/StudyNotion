@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      unique: true,
     },
 
     // Define the password field with type String and required
@@ -56,6 +57,11 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     resetPasswordExpires: {
+      type: Date,
+    },
+    // Updated every time the password changes.
+    // Used to reject tokens that were issued before the latest password change.
+    passwordChangedAt: {
       type: Date,
     },
     image: {

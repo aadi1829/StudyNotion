@@ -24,8 +24,8 @@ exports.resetPasswordToken = async (req, res) => {
     )
     console.log("DETAILS", updatedDetails)
 
-    // const url = `http://localhost:3000/update-password/${token}`
-    const url = `https://studynotion-edtech-project.vercel.app/update-password/${token}`
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000"
+    const url = `${clientUrl}/update-password/${token}`
 
     await mailSender(
       email,
@@ -72,13 +72,14 @@ exports.resetPassword = async (req, res) => {
     const encryptedPassword = await bcrypt.hash(password, 10)
     await User.findOneAndUpdate(
       { token },
-      { 
+      {
         password: encryptedPassword,
-        token: undefined,
-        resetPasswordExpires: undefined
+        token: null,
+        resetPasswordExpires: null,
+        passwordChangedAt: Date.now(),
       },
       { new: true }
-    )    
+    )
     res.status(200).json({
       success: true,
       message: `Password Reset Successful`,
