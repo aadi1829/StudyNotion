@@ -1,115 +1,48 @@
-const mongoose = require("mongoose")
-const Section = require("../models/Section")
 const SubSection = require("../models/Subsection")
 const CourseProgress = require("../models/CourseProgress")
 const Course = require("../models/Course")
+const catchAsync = require("../utils/catchAsync")
+const ApiError = require("../utils/ApiError")
 
-exports.updateCourseProgress = async (req, res) => {
+exports.updateCourseProgress = catchAsync(async (req, res) => {
   const { courseId, subsectionId } = req.body
-
-  if (!courseId || !subsectionId) {
-    return res.status(400).json({
-      success: false,
-      message: "Course ID and Subsection ID are required",
-    });
-  }
-
   const userId = req.user.id
 
-  try {
-    // Check if the subsection is valid
-    const subsection = await SubSection.findById(subsectionId)
-    if (!subsection) {
-      return res.status(404).json({
-        success: false,
-        message: "Subsection not found",
-      })      
-    }
-
-    let courseProgress = await CourseProgress.findOne({
-      courseID: courseId,
-      userId: userId,
-    })
-
-    if (!courseProgress) {
-      // If course progress doesn't exist, create a new one
-      return res.status(404).json({
-        success: false,
-        message: "Course progress Does Not Exist",
-      })
-    } else {
-      // If course progress exists, check if the subsection is already completed
-      if (courseProgress.completedVideos.includes(subsectionId)) {
-        return res.status(409).json({
-          success: false,
-          message: "This subsection is already marked as completed.",
-        })        
-      }
-      courseProgress.completedVideos.push(subsectionId)
-      await courseProgress.save()
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Course progress updated",
-      data: courseProgress,
-    });
-  } catch (error) {
-    console.error("Update Progress Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+  // Check if the subsection is valid
+  const subsection = await SubSection.findById(subsectionId)
+  if (!subsection) {
+    throw new ApiError(404, "Subsection not found")
   }
-}
 
-// exports.getProgressPercentage = async (req, res) => {
-//   const { courseId } = req.body
-//   const userId = req.user.id
+  // Make sure the subsection actually belongs to the given course,
+  // not just that it exists somewhere in the database.
+  const course = await Course.findById(courseId).populate("courseContent")
+  const belongsToCourse = course?.courseContent?.some((section) =>
+    section.subSection.some((id) => id.toString() === subsectionId)
+  )
+  if (!belongsToCourse) {
+    throw new ApiError(400, "This subsection does not belong to the given course")
+  }
 
-//   if (!courseId) {
-//     return res.status(400).json({ error: "Course ID not provided." })
-//   }
+  let courseProgress = await CourseProgress.findOne({
+    courseID: courseId,
+    userId: userId,
+  })
 
-//   try {
-//     // Find the course progress document for the user and course
-//     let courseProgress = await CourseProgress.findOne({
-//       courseID: courseId,
-//       userId: userId,
-//     })
-//       .populate({
-//         path: "courseID",
-//         populate: {
-//           path: "courseContent",
-//         },
-//       })
-//       .exec()
+  if (!courseProgress) {
+    throw new ApiError(404, "Course progress Does Not Exist")
+  }
 
-//     if (!courseProgress) {
-//       return res
-//         .status(400)
-//         .json({ error: "Can not find Course Progress with these IDs." })
-//     }
-//     console.log(courseProgress, userId)
-//     let lectures = 0
-//     courseProgress.courseID.courseContent?.forEach((sec) => {
-//       lectures += sec.subSection.length || 0
-//     })
+  // If course progress exists, check if the subsection is already completed
+  if (courseProgress.completedVideos.includes(subsectionId)) {
+    throw new ApiError(409, "This subsection is already marked as completed.")
+  }
+  courseProgress.completedVideos.push(subsectionId)
+  await courseProgress.save()
 
-//     let progressPercentage =
-//       (courseProgress.completedVideos.length / lectures) * 100
-
-//     // To make it up to 2 decimal point
-//     const multiplier = Math.pow(10, 2)
-//     progressPercentage =
-//       Math.round(progressPercentage * multiplier) / multiplier
-
-//     return res.status(200).json({
-//       data: progressPercentage,
-//       message: "Succesfully fetched Course progress",
-//     })
-//   } catch (error) {
-//     console.error(error)
-//     return res.status(500).json({ error: "Internal server error" })
-//   }
-// }
+  return res.status(200).json({
+    success: true,
+    message: "Course progress updated",
+    data: courseProgress,
+  })
+})
