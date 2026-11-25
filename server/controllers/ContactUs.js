@@ -10,13 +10,11 @@ const catchAsync = require("../utils/catchAsync")
 exports.contactUsController = catchAsync(async (req, res) => {
   const { email, firstname, lastname, message, phoneNo, countrycode } = req.body
 
-  const emailRes = await mailSender(
+  await mailSender(
     email,
     "Your message has been received!",
     contactUsEmail(email, firstname, lastname, message, phoneNo, countrycode)
   )
-
-  console.log("Email sent:", emailRes?.response)
 
   return res.status(200).json({
     success: true,

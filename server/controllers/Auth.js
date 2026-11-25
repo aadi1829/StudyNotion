@@ -166,7 +166,7 @@ exports.changePassword = catchAsync(async (req, res) => {
   )
 
   // Send notification email
-  const emailResponse = await mailSender(
+  await mailSender(
     updatedUserDetails.email,
     "Password for your account has been updated",
     passwordUpdated(
@@ -174,7 +174,6 @@ exports.changePassword = catchAsync(async (req, res) => {
       `Password updated successfully for ${updatedUserDetails.firstName} ${updatedUserDetails.lastName}`
     )
   )
-  console.log("Email sent successfully:", emailResponse?.response)
 
   return res.status(200).json({
     success: true,

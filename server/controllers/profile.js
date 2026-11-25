@@ -40,7 +40,7 @@ exports.updateProfile = catchAsync(async (req, res) => {
     .populate("additionalDetails")
     .exec()
 
-  return res.json({
+  return res.status(200).json({
     success: true,
     message: "Profile updated successfully",
     updatedUserDetails,
@@ -104,7 +104,7 @@ exports.updateDisplayPicture = catchAsync(async (req, res) => {
     { image: image.secure_url },
     { new: true }
   )
-  res.send({
+  res.status(200).json({
     success: true,
     message: `Image Updated successfully`,
     data: updatedProfile,
@@ -185,5 +185,8 @@ exports.instructorDashboard = catchAsync(async (req, res) => {
     }
   })
 
-  res.status(200).json({ courses: courseData })
+  res.status(200).json({
+    success: true,
+    courses: courseData,
+  })
 })

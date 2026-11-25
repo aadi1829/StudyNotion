@@ -94,7 +94,7 @@ exports.updateSubSection = catchAsync(async (req, res) => {
   // find updated section and return it
   const updatedSection = await Section.findById(sectionId).populate("subSection")
 
-  return res.json({
+  return res.status(200).json({
     success: true,
     message: "Section updated successfully",
     data: updatedSection,
@@ -124,7 +124,7 @@ exports.deleteSubSection = catchAsync(async (req, res) => {
   // find updated section and return it
   const updatedSection = await Section.findById(sectionId).populate("subSection")
 
-  return res.json({
+  return res.status(200).json({
     success: true,
     message: "SubSection deleted successfully",
     data: updatedSection,
