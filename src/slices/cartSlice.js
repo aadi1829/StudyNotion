@@ -1,17 +1,33 @@
 import { createSlice } from "@reduxjs/toolkit"
 import { toast } from "react-hot-toast"
 
-const initialState = {
-  cart: localStorage.getItem("cart")
-    ? JSON.parse(localStorage.getItem("cart"))
-    : [],
-  total: localStorage.getItem("total")
-    ? JSON.parse(localStorage.getItem("total"))
-    : 0,
-  totalItems: localStorage.getItem("totalItems")
-    ? JSON.parse(localStorage.getItem("totalItems"))
-    : 0,
+const CART_STORAGE_KEY = "cart"
+
+function loadCartFromStorage() {
+  const defaultState = { cart: [], total: 0, totalItems: 0 }
+  const stored = localStorage.getItem(CART_STORAGE_KEY)
+  if (!stored) return defaultState
+
+  // Older versions stored the cart array under this same key, split across
+  // separate "total"/"totalItems" keys; fall back to defaults for that shape
+  // instead of crashing, since there's nothing to migrate it from reliably.
+  const parsed = JSON.parse(stored)
+  if (!parsed || !Array.isArray(parsed.cart)) return defaultState
+  return parsed
 }
+
+function saveCartToStorage(state) {
+  localStorage.setItem(
+    CART_STORAGE_KEY,
+    JSON.stringify({
+      cart: state.cart,
+      total: state.total,
+      totalItems: state.totalItems,
+    })
+  )
+}
+
+const initialState = loadCartFromStorage()
 
 const cartSlice = createSlice({
   name: "cart",
@@ -31,10 +47,7 @@ const cartSlice = createSlice({
       // Update the total quantity and price
       state.totalItems++
       state.total += course.price
-      // Update to localstorage
-      localStorage.setItem("cart", JSON.stringify(state.cart))
-      localStorage.setItem("total", JSON.stringify(state.total))
-      localStorage.setItem("totalItems", JSON.stringify(state.totalItems))
+      saveCartToStorage(state)
       // show toast
       toast.success("Course added to cart")
     },
@@ -47,10 +60,7 @@ const cartSlice = createSlice({
         state.totalItems--
         state.total -= state.cart[index].price
         state.cart.splice(index, 1)
-        // Update to localstorage
-        localStorage.setItem("cart", JSON.stringify(state.cart))
-        localStorage.setItem("total", JSON.stringify(state.total))
-        localStorage.setItem("totalItems", JSON.stringify(state.totalItems))
+        saveCartToStorage(state)
         // show toast
         toast.success("Course removed from cart")
       }
@@ -59,10 +69,7 @@ const cartSlice = createSlice({
       state.cart = []
       state.total = 0
       state.totalItems = 0
-      // Update to localstorage
-      localStorage.removeItem("cart")
-      localStorage.removeItem("total")
-      localStorage.removeItem("totalItems")
+      localStorage.removeItem(CART_STORAGE_KEY)
     },
   },
 })
